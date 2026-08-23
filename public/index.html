@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔥 Smart Chat Card</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+    body { background: #0b0f1a; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+    .container { max-width: 700px; width: 100%; background: #1a1f2e; border-radius: 30px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid #2a3142; }
+    h1 { color: #fff; text-align: center; font-weight: 300; letter-spacing: 2px; }
+    h1 span { color: #00d4ff; font-weight: 700; }
+    .card-box { background: #121724; border-radius: 20px; padding: 25px; margin: 15px 0; border: 1px solid #2a3142; }
+    .flex { display: flex; gap: 10px; flex-wrap: wrap; }
+    input, button { padding: 12px 18px; border: none; border-radius: 15px; font-size: 16px; }
+    input { background: #252d42; color: white; flex: 1; min-width: 150px; }
+    input::placeholder { color: #6a7a9a; }
+    button { background: #00d4ff; color: #0b0f1a; font-weight: bold; cursor: pointer; transition: 0.3s; }
+    button:hover { transform: scale(1.02); filter: brightness(1.1); }
+    .danger { background: #ff4d6d; color: white; }
+    .live-badge { display: inline-block; padding: 5px 15px; border-radius: 30px; font-size: 14px; font-weight: bold; }
+    .online { background: #00d4ff; color: #0b0f1a; }
+    .offline { background: #444; color: #aaa; }
+    .message-box { background: #0e121c; border-radius: 15px; padding: 20px; margin: 15px 0; border-left: 5px solid #00d4ff; color: #ddd; }
+    .readers { color: #8a9bb5; font-size: 14px; margin-top: 5px; }
+    .row { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+    hr { border-color: #2a3142; }
+  </style>
+</head>
+<body>
+<div class="container" id="app">
+  <h1>💳 <span>LIVE</span> Chat Card</h1>
+
+  <!-- Create Section -->
+  <div class="card-box">
+    <h3 style="color:#fff; margin:0 0 15px 0;">🔹 Create Your Card</h3>
+    <div class="flex">
+      <input id="cardName" placeholder="Your Name" value="Ali">
+      <input id="cardCvv" placeholder="CVV (e.g. 0000)" value="0000">
+      <input id="cardExpiry" placeholder="Expiry (MM/YY)" value="10/30">
+    </div>
+    <button onclick="createCard()" style="width:100%; margin-top:10px;">➕ Generate & Create Card</button>
+    <div id="createdCardDisplay" style="color:#00d4ff; margin-top:10px; font-size:14px;"></div>
+  </div>
+
+  <hr>
+
+  <!-- View / Join Section -->
+  <div class="card-box">
+    <h3 style="color:#fff; margin:0 0 15px 0;">🔹 View or Send to Card</h3>
+    <div class="flex">
+      <input id="viewCardId" placeholder="Enter 16-digit Card Number">
+      <input id="viewerName" placeholder="Your Name" value="User">
+    </div>
+    <button onclick="viewCard()" style="width:100%; margin-top:10px;">🔍 Check Card</button>
+  </div>
+
+  <!-- Live Card Display -->
+  <div id="liveDisplay" style="display:none;" class="card-box">
+    <div class="row">
+      <span style="color:#fff; font-weight:bold;" id="displayCardId">----</span>
+      <span id="liveStatusBadge" class="live-badge offline">⚪ OFFLINE</span>
+      <button onclick="toggleLive()" id="toggleLiveBtn" class="danger" style="padding:6px 15px;">Turn ON</button>
+    </div>
+    <div class="message-box" id="displayMessage">No message yet.</div>
+    <div class="readers" id="displayReaders">👁️ Readers: None</div>
+    
+    <div class="flex" style="margin-top:15px;">
+      <input id="newMessageInput" placeholder="Type new message / update...">
+      <button onclick="sendUpdate()">✈️ Send / Update</button>
+    </div>
+    <p style="color:#667; font-size:12px; margin-top:5px;">* Jo bhi is card ko lagayega, yeh text usay dikhega. Receiver isko edit kar sakta hai.</p>
+  </div>
+</div>
+
+<script>
+  let socket = io();
+  let currentCard = null;
+  let currentCardId = null;
+
+  async function createCard() {
+    const name = document.getElementById('cardName').value || 'Unknown';
+    const cvv = document.getElementById('cardCvv').value || '0000';
+    const expiry = document.getElementById('cardExpiry').value || '12/30';
+    
+    const res = await fetch('/api/create-card', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, cvv, expiry })
+    });
+    const data = await res.json();
+    if (data.success) {
+      currentCard = data.card;
+      currentCardId = data.card.id;
+      document.getElementById('createdCardDisplay').innerHTML = 
+        `✅ Card Created: <b>${data.card.id}</b> (Name: ${data.card.name}) <br> <span style="color:#aaa;">CVV: ${data.card.cvv} | Exp: ${data.card.expiry}</span>`;
+      document.getElementById('viewCardId').value = data.card.id;
+      viewCard();
+    }
+  }
+
+  async function viewCard() {
+    const id = document.getElementById('viewCardId').value.trim();
+    const viewer = document.getElementById('viewerName').value.trim() || 'Guest';
+    if (!id) return alert('Enter card number!');
+    
+    const res = await fetch(`/api/view-card/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ viewerName: viewer })
+    });
+    if (res.status === 404) return alert('❌ Card not found!');
+    const card = await res.json();
+    
+    currentCard = card;
+    currentCardId = id;
+    document.getElementById('liveDisplay').style.display = 'block';
+    document.getElementById('displayCardId').innerText = `#${id}`;
+    
+    socket.emit('join-card', id);
+    updateUI(card);
+  }
+
+  function updateUI(card) {
+    document.getElementById('displayMessage').innerHTML = card.message || 'Empty';
+    document.getElementById('displayReaders').innerHTML = `👁️ Readers (${card.readers.length}): ${card.readers.join(', ') || 'None'}`;
+    
+    const badge = document.getElementById('liveStatusBadge');
+    const btn = document.getElementById('toggleLiveBtn');
+    if (card.isLive) {
+      badge.className = 'live-badge online';
+      badge.innerText = '🟢 LIVE ONLINE';
+      btn.innerText = 'Turn OFF';
+      btn.className = 'danger';
+    } else {
+      badge.className = 'live-badge offline';
+      badge.innerText = '⚪ OFFLINE';
+      btn.innerText = 'Turn ON';
+      btn.className = '';
+      btn.style.background = '#00d4ff';
+    }
+  }
+
+  async function toggleLive() {
+    if (!currentCardId) return;
+    await fetch(`/api/toggle-live/${currentCardId}`, { method: 'POST' });
+  }
+
+  async function sendUpdate() {
+    const msg = document.getElementById('newMessageInput').value.trim();
+    if (!msg) return alert('Type a message!');
+    if (!currentCardId) return;
+    
+    const viewer = document.getElementById('viewerName').value || 'Admin';
+    await fetch(`/api/update-message/${currentCardId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, viewerName: viewer })
+    });
+    document.getElementById('newMessageInput').value = '';
+    socket.emit('send-message-live', { cardId: currentCardId, message: msg, sender: viewer });
+  }
+
+  socket.on('live-update', (data) => {
+    if (currentCard) {
+      currentCard.isLive = data.isLive;
+      updateUI(currentCard);
+    }
+  });
+
+  socket.on('message-update', (data) => {
+    if (currentCard) {
+      currentCard.message = data.message;
+      currentCard.readers = data.readers;
+      updateUI(currentCard);
+    }
+  });
+
+  socket.on('live-message', (data) => {
+    if (currentCard) {
+      currentCard.message = data.message;
+      currentCard.readers = data.readers;
+      updateUI(currentCard);
+      alert(`📩 New Live Update from ${data.updatedBy || 'someone'}:\n\n"${data.message}"`);
+    }
+  });
+
+  socket.on('reader-update', (data) => {
+    if (currentCard) {
+      currentCard.readers = data.readers;
+      updateUI(currentCard);
+    }
+  });
+
+  window.onload = function() {
+    const params = new URLSearchParams(window.location.search);
+    const cid = params.get('card');
+    if (cid) {
+      document.getElementById('viewCardId').value = cid;
+      viewCard();
+    }
+  }
+</script>
+</body>
+</html>

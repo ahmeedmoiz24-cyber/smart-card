@@ -1,0 +1,15 @@
+{
+  "name": "smart-card",
+  "version": "1.0.0",
+  "description": "Real Live Chat Card System with Permanent DB",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "uuid": "^9.0.1",
+    "mongoose": "^8.0.0"
+  }
+}
